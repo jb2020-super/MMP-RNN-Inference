@@ -1,3 +1,10 @@
+# How to Use
+Download MMP-RNN GoPro model from [Google Driver](https://drive.google.com/file/d/1Es6WJcsngCnrZ0ljfg9-YSUpgEq77UYE/view?usp=drive_link)
+```bash
+cd MMP-RNN/MMP-RNN
+python infer_video.py --input blur_video.mp4 --output deblured_video.mp4
+```
+
 # Efficient Video Deblurring Guided by Motion Magnitude
 Official repository of MMP-RNN (ECCV 2022) [Paper](https://arxiv.org/abs/2207.13374)  
 Estimate pixel-wise blur level (MMP) first and video deblur.  
