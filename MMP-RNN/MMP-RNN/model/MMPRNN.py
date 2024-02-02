@@ -267,7 +267,7 @@ class CAT(nn.Module):
         self.ca = CALayer(self.frames * (5 * self.n_feats))
     def forward(self, hs):
         out = torch.cat(hs, dim=1)
-        #out,_ = self.ca(out)
+        out,_ = self.ca(out)
         out = self.fusion(out)
         return out
 
@@ -296,7 +296,7 @@ class RDBCell(nn.Module):
         
         self.prior =UNet()
         
-        checkpoint = torch.load("./model_best.pth.tar") #, map_location=lambda storage, loc: storage.cuda()
+        checkpoint = torch.load("model_best.pth.tar") #, map_location=lambda storage, loc: storage.cuda()
         self.prior.load_state_dict(checkpoint['state_dict'])
         self.prior.eval()
         
@@ -330,8 +330,8 @@ class Reconstructor(nn.Module):
     def __init__(self, para):
         super(Reconstructor, self).__init__()
         self.para = para
-        self.num_ff = para.future_frames
-        self.num_fb = para.past_frames
+        self.num_ff = 2
+        self.num_fb = 2
         self.related_f = self.num_ff + 1 + self.num_fb
         self.n_feats = para.n_features
         self.n_blocks = para.n_blocks_b
@@ -357,21 +357,40 @@ class Model(nn.Module):
     def __init__(self, para):
         super(Model, self).__init__()
         self.para = para
-        self.n_feats = para.n_features
-        self.num_ff = para.future_frames
-        self.num_fb = para.past_frames
+        self.n_feats = 18
+        self.num_ff = 2
+        self.num_fb = 2
         self.ds_ratio = 4
         self.device = torch.device('cuda')
         self.cell = RDBCell(para)
         self.recons = Reconstructor(para)
         self.fusion = CAT(para)
-        self.do_skip = para.do_skip
-        self.centralize = para.centralize
-        self.normalize = para.normalize
+        self.do_skip = True
+        self.centralize = True
+        self.normalize = True
         if self.do_skip == True:
             self.skip = nn.Conv2d(in_channels=3, out_channels=3, kernel_size=9, stride =1, padding=4, bias=True)
         
-    def forward(self, x, profile_flag=False):
+    def forward(self, input_list, hs, s, mid):
+        n = len(input_list)
+        x = input_list[n-1]
+
+        batch_size, channels, height, width = x.shape
+        s_height = int(height / self.ds_ratio)
+        s_width = int(width / self.ds_ratio)
+        h, s, mid = self.cell(x, s, mid)
+        hs.append(h)
+        if len(hs) < 5:            
+            return None, hs, s, mid
+        out = self.fusion(hs)
+        out = self.recons(out)
+        if self.do_skip == True:
+            skip = self.skip(input_list[0])
+            #skip = self.skip(input_list[2])
+            out = out + skip
+        return out.squeeze(dim=0), hs, s, mid
+
+    def forward0(self, x, profile_flag=False):
         if profile_flag:
             return self.profile_forward(x)
         outputs, hs = [], []
@@ -385,10 +404,7 @@ class Model(nn.Module):
             h, s, mid = self.cell(x[:, i, :, :, :], s, mid)
             hs.append(h)
         for i in range(self.num_fb, frames - self.num_ff):
-           
-            
             out = self.fusion(hs[i - self.num_fb:i + self.num_ff + 1])
-            
             out = self.recons(out)
             if self.do_skip == True:
                 skip = self.skip(x[:, i, 0:3, :, :])
